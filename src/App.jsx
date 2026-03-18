@@ -38,13 +38,20 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('home');
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminRole, setAdminRole] = useState(null); 
-  const [adminPass, setAdminPass] = useState('');
   
-  // Estados de Autenticação da Comunidade (Whitelist)
+  // Estado para Erros Críticos de Configuração
+  const [globalError, setGlobalError] = useState('');
+
+  // Estados de Autenticação Geral
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
-  const [authMode, setAuthMode] = useState('login'); // 'login' ou 'register'
+  const [authMode, setAuthMode] = useState('login'); 
   const [authError, setAuthError] = useState('');
+
+  // Estados de Autenticação Específicos do Admin
+  const [adminEmail, setAdminEmail] = useState('');
+  const [adminAuthPass, setAdminAuthPass] = useState('');
+  const [adminPass, setAdminPass] = useState(''); 
 
   const [posts, setPosts] = useState([]);
   const [communityPosts, setCommunityPosts] = useState([]); 
@@ -60,7 +67,6 @@ export default function App() {
     siteName: 'NÊMESIS 2'
   });
 
-  const [ghConfig, setGhConfig] = useState({ token: '', owner: '', repo: '', path: 'media' });
   const [showSettings, setShowSettings] = useState(false);
   
   const [newPost, setNewPost] = useState({ title: '', content: '', mediaUrl: '', mediaType: 'image' });
@@ -70,13 +76,21 @@ export default function App() {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState('');
 
-  // Autenticação (Trata Anonymous e Email)
+  // Autenticação Silenciosa (Visitantes)
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, async (u) => {
       if (!u) {
         try {
-          await signInAnonymously(auth); // Visitante padrão
-        } catch (e) { console.error("Erro Auth:", e); }
+          await signInAnonymously(auth); 
+          setGlobalError('');
+        } catch (e) { 
+          console.error("Erro Auth:", e); 
+          if (e.code === 'auth/admin-restricted-operation' || e.code === 'auth/operation-not-allowed') {
+             setGlobalError('⚠️ O Login Anônimo está desativado no Firebase! Vá em Authentication > Sign-in method e ative o provedor "Anônimo" para o site carregar os dados.');
+          }
+        }
+      } else {
+        setGlobalError('');
       }
       setUser(u);
     });
@@ -110,11 +124,6 @@ export default function App() {
       if (snap.exists()) setSiteSettings(snap.data());
     });
 
-    const configDoc = doc(db, 'artifacts', appId, 'users', user.uid, 'config', 'github');
-    getDoc(configDoc).then(snap => {
-      if (snap.exists()) setGhConfig(snap.data());
-    });
-
     return () => {
       unsubscribePosts();
       unsubscribeComm();
@@ -123,13 +132,15 @@ export default function App() {
     };
   }, [user]);
 
-  // LOGIN / REGISTRO DA COMUNIDADE (WHITELIST)
+  const isRealUser = user && !user.isAnonymous;
+  const loggedPlayer = isRealUser ? players.find(p => p.email && p.email.toLowerCase() === user.email?.toLowerCase()) : null;
+
+  // --- LOGIN DA COMUNIDADE (GALERIA) ---
   const handlePlayerAuth = async (e) => {
     e.preventDefault();
     setAuthError('');
     try {
       if (authMode === 'register') {
-        // Checar Whitelist (Se o email está na lista de players)
         const isWhitelisted = players.some(p => p.email && p.email.toLowerCase() === authEmail.toLowerCase());
         if (!isWhitelisted) {
           setAuthError('E-mail não autorizado! Peça a um Administrador para alistar você primeiro.');
@@ -142,70 +153,69 @@ export default function App() {
       setAuthEmail('');
       setAuthPassword('');
     } catch (err) {
-      if (err.message.includes('email-already-in-use')) setAuthError('Este e-mail já possui cadastro. Use a aba de Login.');
+      if (err.code === 'auth/admin-restricted-operation') {
+        setAuthError('Criação bloqueada no Firebase. Vá em Authentication > Settings > User actions e ative "Enable create (sign-up)".');
+      }
+      else if (err.message.includes('email-already-in-use')) setAuthError('Este e-mail já possui cadastro. Use a aba de Login.');
       else if (err.message.includes('wrong-password') || err.message.includes('invalid-credential')) setAuthError('Senha incorreta ou usuário não encontrado.');
       else setAuthError('Erro na autenticação. Verifique os dados e tente novamente.');
     }
   };
 
   const handlePlayerLogout = async () => {
-    await signOut(auth); // Ao sair, o useEffect vai logar como anônimo automaticamente
+    setIsAdmin(false);
+    setAdminRole(null);
+    await signOut(auth); 
   };
 
-  // Upload GitHub (Admin)
-  const uploadToGitHub = async (file, subPath = null) => {
-    if (!ghConfig.token || !ghConfig.owner || !ghConfig.repo) {
-      alert("Configura as chaves do GitHub no painel Master!");
-      return null;
-    }
-    const path = subPath || ghConfig.path;
-    const fileName = `${Date.now()}-${file.name.replace(/\s+/g, '_')}`;
-    const reader = new FileReader();
+  // --- LOGIN DO ADMIN (MURAL & CONFIGURAÇÕES) ---
+  const handleAdminLogin = async (e) => {
+    e.preventDefault();
+    setAuthError('');
     
-    return new Promise((resolve, reject) => {
-      reader.onload = async () => {
-        const content = reader.result.split(',')[1];
-        setUploadProgress('Sincronizando ficheiro...');
-        try {
-          const response = await fetch(
-            `https://api.github.com/repos/${ghConfig.owner}/${ghConfig.repo}/contents/${path}/${fileName}`,
-            {
-              method: 'PUT',
-              headers: {
-                'Authorization': `token ${ghConfig.token}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({ message: `Upload: ${fileName}`, content: content }),
-            }
-          );
-          if (!response.ok) throw new Error('Erro API GitHub');
-          const data = await response.json();
-          resolve(data.content.download_url);
-        } catch (error) { reject(error); }
-      };
-      reader.readAsDataURL(file);
-    });
+    try {
+      if (!isRealUser) {
+        if (!adminEmail || !adminAuthPass) {
+          setAuthError('E-mail e Senha são obrigatórios para autenticar a sessão.');
+          return;
+        }
+        await signInWithEmailAndPassword(auth, adminEmail, adminAuthPass);
+      }
+
+      if (adminPass === 'ROGZINHU-T10b20cd00n804') { 
+        setIsAdmin(true); setAdminRole('master'); setAdminPass(''); setAdminEmail(''); setAdminAuthPass('');
+      } else if (adminPass === 'ADMNEMESIS15') {
+        setIsAdmin(true); setAdminRole('admin'); setAdminPass(''); setAdminEmail(''); setAdminAuthPass('');
+      } else {
+        setAuthError('Chave de Acesso Master/Admin inválida!');
+      }
+    } catch (err) {
+      setAuthError('E-mail ou Senha incorretos. Verifique suas credenciais.');
+    }
   };
 
+
+  // --- UPLOADS PARA O FIREBASE STORAGE ---
+  
   const handleFileChange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     setIsUploading(true);
+    setUploadProgress('A carregar para a Arca...');
     try {
+      const storageRef = ref(storage, `official/${Date.now()}_${file.name.replace(/\s+/g, '_')}`);
+      await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(storageRef);
       const type = file.type.startsWith('video/') ? 'video' : 'image';
-      const url = await uploadToGitHub(file);
-      if (url) {
-        setNewPost(prev => ({ ...prev, mediaUrl: url, mediaType: type }));
-        setUploadProgress('Transferência Concluída!');
-      }
-    } catch (err) { alert("Falha na conexão com GitHub."); } 
+      setNewPost(prev => ({ ...prev, mediaUrl: url, mediaType: type }));
+      setUploadProgress('Mídia anexada com sucesso!');
+    } catch (err) { alert("Falha na conexão com Storage."); } 
     finally {
       setIsUploading(false);
       setTimeout(() => setUploadProgress(''), 3000);
     }
   };
 
-  // Upload Firebase (Comunidade)
   const handleCommFileChange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -231,43 +241,23 @@ export default function App() {
     const file = e.target.files[0];
     if (!file) return;
     setIsUploading(true);
+    setUploadProgress('A enviar nova logo...');
     try {
-      const url = await uploadToGitHub(file, 'system');
-      if (url) {
-        const siteConfigDoc = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'site');
-        await setDoc(siteConfigDoc, { ...siteSettings, logoUrl: url }, { merge: true });
-      }
+      const storageRef = ref(storage, `system/logo_${Date.now()}_${file.name.replace(/\s+/g, '_')}`);
+      await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(storageRef);
+      const siteConfigDoc = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'site');
+      await setDoc(siteConfigDoc, { ...siteSettings, logoUrl: url }, { merge: true });
+      setUploadProgress('Logo atualizada!');
     } catch (err) { alert("Erro ao atualizar logo."); }
-    finally { setIsUploading(false); }
-  };
-
-  const saveGhConfig = async () => {
-    if (!user) return;
-    try {
-      const configDoc = doc(db, 'artifacts', appId, 'users', user.uid, 'config', 'github');
-      await setDoc(configDoc, ghConfig);
-      setShowSettings(false);
-      setUploadProgress('Credenciais Salvas!');
-      setTimeout(() => setUploadProgress(''), 2000);
-    } catch (err) { console.error(err); }
-  };
-
-  const handleLogin = (e) => {
-    e.preventDefault();
-    if (adminPass === 'ROGZINHU-T10b20cd00n804') { 
-      setIsAdmin(true); setAdminRole('master'); setAdminPass('');
-    } else if (adminPass === 'ADMNEMESIS15') {
-      setIsAdmin(true); setAdminRole('admin'); setAdminPass('');
-    } else {
-      const err = document.getElementById('login-err');
-      if (err) {
-        err.classList.remove('hidden');
-        setTimeout(() => err.classList.add('hidden'), 3000);
-      }
+    finally { 
+      setIsUploading(false); 
+      setTimeout(() => setUploadProgress(''), 3000);
     }
   };
 
-  // Funções de Posts
+  // --- FUNÇÕES DE BANCO DE DADOS ---
+
   const createPost = async (e) => {
     e.preventDefault();
     if (!user || !newPost.title || !newPost.content) return;
@@ -300,7 +290,6 @@ export default function App() {
     await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'community', id));
   };
 
-  // Funções de Jogadores
   const addPlayer = async (e) => {
     e.preventDefault();
     if (!user || !newPlayer.name || !newPlayer.email) {
@@ -316,7 +305,7 @@ export default function App() {
     await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'players', id));
   };
 
-  // Variáveis Auxiliares
+  // Variáveis Auxiliares de Jogadores
   const andromeda = ["Night", "Elma", "Netunolis", "Peixo", "Never", "Codein", "Virgula", "Little", "Rogzinhu", "Eddie", "Tio Thalys", "Yuri"];
   const helix = ["YasBruxa", "LeLeo", "Kirito", "Nisotto_", "daisukih", "TwinMilk", "FeehGaito", "Green Mage", "Fabrisla", "Oiyunao", "eclipsezero", "Flitz"];
 
@@ -324,15 +313,18 @@ export default function App() {
   const dbHelix = players.filter(p => p.team === 'helix');
   const displayAndromeda = players.length === 0 ? andromeda.map(name => ({ id: name, name, link: '', email: '' })) : dbAndromeda;
   const displayHelix = players.length === 0 ? helix.map(name => ({ id: name, name, link: '', email: '' })) : dbHelix;
-  
   const allPlayerNames = players.length > 0 ? players.map(p => p.name) : [...andromeda, ...helix];
   
-  // Verifica se o usuário é um jogador real logado por email (Whitelist)
-  const isRealUser = user && !user.isAnonymous;
-  const loggedPlayer = isRealUser ? players.find(p => p.email && p.email.toLowerCase() === user.email?.toLowerCase()) : null;
-
   return (
     <div className="min-h-screen bg-[#020202] text-white selection:bg-yellow-500/30 font-sans overflow-x-hidden">
+      
+      {/* Alerta de Erro Global (Firebase Config) */}
+      {globalError && (
+        <div className="bg-red-600 text-white font-black text-center p-3 text-xs uppercase tracking-widest z-[100] relative">
+          {globalError}
+        </div>
+      )}
+
       {/* Background Decorativo */}
       <div className="fixed inset-0 pointer-events-none opacity-20">
         <div className="absolute top-[-10%] left-[-10%] w-[60%] h-[60%] bg-purple-900 blur-[120px] rounded-full animate-pulse"></div>
@@ -351,7 +343,7 @@ export default function App() {
             <NavBtn active={activeTab === 'community'} onClick={() => setActiveTab('community')} Icon={ImageIcon} label="Galeria" />
             <NavBtn active={activeTab === 'lore'} onClick={() => setActiveTab('lore')} Icon={Book} label="Lore" />
             <NavBtn active={activeTab === 'teams'} onClick={() => setActiveTab('teams')} Icon={Users} label="Nações" />
-            <button onClick={() => setActiveTab('admin')} className={`p-3 rounded-xl transition flex items-center gap-2 ${activeTab === 'admin' ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20' : 'text-gray-400 hover:bg-white/5'}`}>
+            <button onClick={() => { setActiveTab('admin'); setAuthError(''); }} className={`p-3 rounded-xl transition flex items-center gap-2 ${activeTab === 'admin' ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20' : 'text-gray-400 hover:bg-white/5'}`}>
               <LayoutDashboard size={20} />
               <span className="hidden md:block text-xs font-black uppercase">Painel</span>
             </button>
@@ -570,9 +562,28 @@ export default function App() {
               <div className="bg-[#0a0a0a] p-16 rounded-[3rem] border border-white/5 text-center shadow-2xl max-w-xl mx-auto">
                 <Lock size={40} className="text-yellow-500 mx-auto mb-6" />
                 <h2 className="text-4xl font-black mb-8 uppercase tracking-tighter italic">Terminal Arca</h2>
-                <div id="login-err" className="hidden mb-6 text-red-500 font-black uppercase text-xs">Acesso Negado</div>
-                <form onSubmit={handleLogin} className="space-y-4">
-                  <input type="password" placeholder="CHAVE DE ACESSO" className="w-full bg-black border-2 border-white/5 p-5 rounded-2xl focus:border-yellow-500 outline-none text-center font-black" value={adminPass} onChange={(e) => setAdminPass(e.target.value)} />
+                
+                {authError && <div className="mb-6 text-[10px] font-black uppercase text-red-500 bg-red-500/10 p-3 rounded-lg">{authError}</div>}
+                
+                <form onSubmit={handleAdminLogin} className="space-y-4">
+                  {/* Se o Admin NÃO estiver logado com uma conta real via Galeria, pedimos o e-mail e senha aqui */}
+                  {!isRealUser && (
+                    <>
+                      <input type="email" placeholder="E-MAIL DE REGISTRO" required className="w-full bg-black border-2 border-white/5 p-5 rounded-2xl focus:border-yellow-500 outline-none text-center font-black text-sm transition-colors" value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} />
+                      <input type="password" placeholder="SENHA" required className="w-full bg-black border-2 border-white/5 p-5 rounded-2xl focus:border-yellow-500 outline-none text-center font-black text-sm transition-colors" value={adminAuthPass} onChange={(e) => setAdminAuthPass(e.target.value)} />
+                    </>
+                  )}
+                  
+                  {/* Se o Admin JÁ ESTIVER logado, confirmamos quem ele é */}
+                  {isRealUser && (
+                    <div className="mb-4 text-xs font-black uppercase text-green-500 bg-green-500/10 p-4 rounded-xl">
+                      Autenticado como: {loggedPlayer?.name || user.email}
+                    </div>
+                  )}
+
+                  {/* A chave mestra sempre é exigida para liberar as funções do painel */}
+                  <input type="password" placeholder="CHAVE DE ACESSO MASTER/ADMIN" required className="w-full bg-black border-2 border-white/5 p-5 rounded-2xl focus:border-yellow-500 outline-none text-center font-black text-sm transition-colors" value={adminPass} onChange={(e) => setAdminPass(e.target.value)} />
+                  
                   <button className="w-full bg-yellow-500 text-black font-black p-5 rounded-2xl hover:bg-yellow-400 shadow-xl transition-all">ESTABELECER CONEXÃO</button>
                 </form>
               </div>
@@ -590,23 +601,17 @@ export default function App() {
                 </header>
 
                 {showSettings && adminRole === 'master' && (
-                  <div className="grid md:grid-cols-2 gap-8 animate-in zoom-in duration-300">
-                    <div className="bg-yellow-500/5 border border-yellow-500/20 p-10 rounded-[2.5rem] space-y-6 shadow-xl">
+                  <div className="animate-in zoom-in duration-300">
+                    <div className="bg-yellow-500/5 border border-yellow-500/20 p-10 rounded-[2.5rem] space-y-6 shadow-xl max-w-xl">
                       <h4 className="font-black uppercase text-yellow-500 italic flex items-center gap-2"><Palette size={18}/> Identidade</h4>
                       <div className="flex items-center gap-6">
                          <img src={String(siteSettings.logoUrl)} className="w-20 h-20 rounded-2xl object-cover border-2 border-yellow-500/50" alt="Logo Settings" />
-                         <button disabled={isUploading} onClick={() => logoInputRef.current?.click()} className="flex-1 p-3 bg-yellow-500 text-black font-black rounded-xl text-xs uppercase">Mudar Logo</button>
+                         <div className="flex-1 space-y-2">
+                           <button disabled={isUploading} onClick={() => logoInputRef.current?.click()} className="w-full p-4 bg-yellow-500 text-black font-black rounded-xl text-xs uppercase">Mudar Logo</button>
+                           {isUploading && <p className="text-[10px] text-yellow-500 font-black uppercase text-center">{uploadProgress}</p>}
+                         </div>
                          <input type="file" ref={logoInputRef} className="hidden" accept="image/*" onChange={handleLogoUpdate} />
                       </div>
-                    </div>
-                    <div className="bg-blue-500/5 border border-blue-500/20 p-10 rounded-[2.5rem] space-y-4 shadow-xl">
-                      <h4 className="font-black uppercase text-blue-400 italic flex items-center gap-2"><Settings size={18}/> GitHub API</h4>
-                      <input type="password" placeholder="Token" className="w-full bg-black border border-white/5 p-3 rounded-xl text-xs font-bold" value={String(ghConfig.token || '')} onChange={e => setGhConfig({...ghConfig, token: e.target.value})} />
-                      <div className="grid grid-cols-2 gap-4">
-                        <input type="text" placeholder="Dono (Usuário)" className="bg-black border border-white/5 p-3 rounded-xl text-xs" value={String(ghConfig.owner || '')} onChange={e => setGhConfig({...ghConfig, owner: e.target.value})} />
-                        <input type="text" placeholder="Repositório" className="bg-black border border-white/5 p-3 rounded-xl text-xs" value={String(ghConfig.repo || '')} onChange={e => setGhConfig({...ghConfig, repo: e.target.value})} />
-                      </div>
-                      <button onClick={saveGhConfig} className="w-full bg-blue-600 text-white font-black p-3 rounded-xl uppercase text-xs">Salvar Definições</button>
                     </div>
                   </div>
                 )}
