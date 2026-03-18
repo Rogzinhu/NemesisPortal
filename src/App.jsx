@@ -8,7 +8,6 @@ import {
   getAuth, signInAnonymously, onAuthStateChanged, 
   signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut
 } from 'firebase/auth';
-import { getStorage, ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { 
   Book, LayoutDashboard, LogOut, Plus, Trash2, 
   Users, Home, MessageSquare, AlertTriangle,
@@ -29,7 +28,6 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const storage = getStorage(app); 
 const appId = 'nemesis-2-app';
 
 // --- COMPONENTE PRINCIPAL ---
@@ -67,6 +65,8 @@ export default function App() {
     siteName: 'NÊMESIS 2'
   });
 
+  // A API do GitHub agora fica global para todos os membros poderem enviar ficheiros
+  const [ghConfig, setGhConfig] = useState({ token: '', owner: '', repo: '', path: 'media' });
   const [showSettings, setShowSettings] = useState(false);
   
   const [newPost, setNewPost] = useState({ title: '', content: '', mediaUrl: '', mediaType: 'image' });
@@ -85,9 +85,6 @@ export default function App() {
           setGlobalError('');
         } catch (e) { 
           console.error("Erro Auth:", e); 
-          if (e.code === 'auth/admin-restricted-operation' || e.code === 'auth/operation-not-allowed') {
-             setGlobalError('⚠️ O Login Anônimo está desativado no Firebase! Vá em Authentication > Sign-in method e ative o provedor "Anônimo" para o site carregar os dados.');
-          }
         }
       } else {
         setGlobalError('');
@@ -124,11 +121,18 @@ export default function App() {
       if (snap.exists()) setSiteSettings(snap.data());
     });
 
+    // Puxa as configurações do GitHub globalmente para a Galeria funcionar
+    const ghConfigDoc = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'github');
+    const unsubscribeGh = onSnapshot(ghConfigDoc, (snap) => {
+      if (snap.exists()) setGhConfig(snap.data());
+    });
+
     return () => {
       unsubscribePosts();
       unsubscribeComm();
       unsubscribeSite();
       unsubscribePlayers();
+      unsubscribeGh();
     };
   }, [user]);
 
@@ -153,10 +157,7 @@ export default function App() {
       setAuthEmail('');
       setAuthPassword('');
     } catch (err) {
-      if (err.code === 'auth/admin-restricted-operation') {
-        setAuthError('Criação bloqueada no Firebase. Vá em Authentication > Settings > User actions e ative "Enable create (sign-up)".');
-      }
-      else if (err.message.includes('email-already-in-use')) setAuthError('Este e-mail já possui cadastro. Use a aba de Login.');
+      if (err.message.includes('email-already-in-use')) setAuthError('Este e-mail já possui cadastro. Use a aba de Login.');
       else if (err.message.includes('wrong-password') || err.message.includes('invalid-credential')) setAuthError('Senha incorreta ou usuário não encontrado.');
       else setAuthError('Erro na autenticação. Verifique os dados e tente novamente.');
     }
@@ -195,114 +196,125 @@ export default function App() {
   };
 
 
-  // --- UPLOADS PARA O FIREBASE STORAGE ---
-  
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    setIsUploading(true);
-    setUploadProgress('A carregar... 0%');
-    setGlobalError('');
-
-    const storageRef = ref(storage, `official/${Date.now()}_${file.name.replace(/\s+/g, '_')}`);
-    const uploadTask = uploadBytesResumable(storageRef, file);
-
-    uploadTask.on('state_changed', 
-      (snapshot) => {
-        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-        setUploadProgress(`A carregar... ${Math.round(progress)}%`);
-      }, 
-      (error) => {
-        setGlobalError("Erro de permissão no Storage. Verifique as Regras no painel do Firebase.");
-        setIsUploading(false);
-        setUploadProgress('Erro no envio');
-      }, 
-      async () => {
+  // --- UPLOADS USANDO APENAS A API DO GITHUB ---
+  const uploadToGitHub = async (file, subPath = null) => {
+    if (!ghConfig.token || !ghConfig.owner || !ghConfig.repo) {
+      setGlobalError("As chaves do GitHub não estão configuradas no painel Master!");
+      setTimeout(() => setGlobalError(''), 5000);
+      return null;
+    }
+    const path = subPath || ghConfig.path || 'media';
+    const fileName = `${Date.now()}-${file.name.replace(/\s+/g, '_')}`;
+    const reader = new FileReader();
+    
+    return new Promise((resolve, reject) => {
+      reader.onload = async () => {
+        const content = reader.result.split(',')[1];
         try {
-          const url = await getDownloadURL(uploadTask.snapshot.ref);
-          const type = file.type.startsWith('video/') ? 'video' : 'image';
-          setNewPost(prev => ({ ...prev, mediaUrl: url, mediaType: type }));
-          setUploadProgress('Mídia anexada!');
-        } catch (err) {
-          setGlobalError("Erro ao processar imagem.");
-        } finally {
-          setIsUploading(false);
-          setTimeout(() => setUploadProgress(''), 3000);
-        }
-      }
-    );
+          const response = await fetch(
+            `https://api.github.com/repos/${ghConfig.owner}/${ghConfig.repo}/contents/${path}/${fileName}`,
+            {
+              method: 'PUT',
+              headers: {
+                'Authorization': `token ${ghConfig.token}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ message: `Upload: ${fileName}`, content: content }),
+            }
+          );
+          if (!response.ok) throw new Error('Erro API GitHub');
+          const data = await response.json();
+          resolve(data.content.download_url);
+        } catch (error) { reject(error); }
+      };
+      reader.readAsDataURL(file);
+    });
   };
 
-  const handleCommFileChange = (e) => {
+  // Upload Oficial
+  const handleFileChange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     setIsUploading(true);
-    setUploadProgress('A carregar... 0%');
+    setUploadProgress('A enviar para o GitHub...');
     setGlobalError('');
 
-    const storageRef = ref(storage, `community/${Date.now()}_${file.name.replace(/\s+/g, '_')}`);
-    const uploadTask = uploadBytesResumable(storageRef, file);
-
-    uploadTask.on('state_changed', 
-      (snapshot) => {
-        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-        setUploadProgress(`A carregar... ${Math.round(progress)}%`);
-      }, 
-      (error) => {
-        setGlobalError("Erro ao enviar foto. Vá ao Firebase > Storage > Rules e certifique-se que as regras permitem leitura e escrita.");
-        setIsUploading(false);
-        setUploadProgress('Erro');
-      }, 
-      async () => {
-        try {
-          const url = await getDownloadURL(uploadTask.snapshot.ref);
-          const type = file.type.startsWith('video/') ? 'video' : 'image';
-          setNewCommPost(prev => ({ ...prev, mediaUrl: url, mediaType: type }));
-          setUploadProgress('Concluído!');
-        } catch (err) {
-          setGlobalError("Erro ao gerar link da imagem.");
-        } finally {
-          setIsUploading(false);
-          setTimeout(() => setUploadProgress(''), 3000);
-        }
+    try {
+      const type = file.type.startsWith('video/') ? 'video' : 'image';
+      const url = await uploadToGitHub(file, 'official');
+      if (url) {
+        setNewPost(prev => ({ ...prev, mediaUrl: url, mediaType: type }));
+        setUploadProgress('Mídia anexada com sucesso!');
       }
-    );
+    } catch (err) { 
+      setGlobalError("Falha na conexão com GitHub. O ficheiro pode ser muito pesado."); 
+      setTimeout(() => setGlobalError(''), 5000);
+    } 
+    finally {
+      setIsUploading(false);
+      setTimeout(() => setUploadProgress(''), 3000);
+    }
   };
 
-  const handleLogoUpdate = (e) => {
+  // Upload Galeria
+  const handleCommFileChange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     setIsUploading(true);
-    setUploadProgress('A enviar logo... 0%');
+    setUploadProgress('A processar ligação...');
     setGlobalError('');
 
-    const storageRef = ref(storage, `system/logo_${Date.now()}_${file.name.replace(/\s+/g, '_')}`);
-    const uploadTask = uploadBytesResumable(storageRef, file);
-
-    uploadTask.on('state_changed', 
-      (snapshot) => {
-        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-        setUploadProgress(`A carregar... ${Math.round(progress)}%`);
-      }, 
-      (error) => {
-        setGlobalError("Erro ao atualizar logo. Verifique as permissões do Firebase Storage.");
-        setIsUploading(false);
-        setUploadProgress('Erro');
-      }, 
-      async () => {
-        try {
-          const url = await getDownloadURL(uploadTask.snapshot.ref);
-          const siteConfigDoc = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'site');
-          await setDoc(siteConfigDoc, { ...siteSettings, logoUrl: url }, { merge: true });
-          setUploadProgress('Logo atualizada!');
-        } catch (err) {
-          setGlobalError("Erro ao salvar logo.");
-        } finally {
-          setIsUploading(false);
-          setTimeout(() => setUploadProgress(''), 3000);
-        }
+    try {
+      const type = file.type.startsWith('video/') ? 'video' : 'image';
+      const url = await uploadToGitHub(file, 'community');
+      if (url) {
+        setNewCommPost(prev => ({ ...prev, mediaUrl: url, mediaType: type }));
+        setUploadProgress('Mídia carregada com sucesso!');
       }
-    );
+    } catch (err) {
+      setGlobalError("Erro ao enviar! Certifique-se que o ficheiro não excede o limite (50MB).");
+      setTimeout(() => setGlobalError(''), 5000);
+    } finally {
+      setIsUploading(false);
+      setTimeout(() => setUploadProgress(''), 3000);
+    }
+  };
+
+  // Upload Logo
+  const handleLogoUpdate = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setIsUploading(true);
+    setUploadProgress('A atualizar logo...');
+    setGlobalError('');
+
+    try {
+      const url = await uploadToGitHub(file, 'system');
+      if (url) {
+        const siteConfigDoc = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'site');
+        await setDoc(siteConfigDoc, { ...siteSettings, logoUrl: url }, { merge: true });
+        setUploadProgress('Logo atualizada!');
+      }
+    } catch (err) { 
+      setGlobalError("Erro ao atualizar logo."); 
+      setTimeout(() => setGlobalError(''), 5000);
+    }
+    finally { 
+      setIsUploading(false); 
+      setTimeout(() => setUploadProgress(''), 3000);
+    }
+  };
+
+  // Salvar a chave do GitHub para toda a aplicação usar
+  const saveGhConfig = async () => {
+    if (!user) return;
+    try {
+      const configDoc = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'github');
+      await setDoc(configDoc, ghConfig);
+      setShowSettings(false);
+      setGlobalError('Credenciais do GitHub Salvas com Sucesso!');
+      setTimeout(() => setGlobalError(''), 3000);
+    } catch (err) { console.error(err); }
   };
 
   // --- FUNÇÕES DE BANCO DE DADOS ---
@@ -367,9 +379,9 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#020202] text-white selection:bg-yellow-500/30 font-sans overflow-x-hidden">
       
-      {/* Alerta de Erro Global (Firebase Config) */}
+      {/* Alerta de Erro Global */}
       {globalError && (
-        <div className="bg-red-600 text-white font-black text-center p-3 text-xs uppercase tracking-widest z-[100] relative">
+        <div className={`font-black text-center p-3 text-xs uppercase tracking-widest z-[100] relative transition-colors ${globalError.includes('Sucesso') ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
           {globalError}
         </div>
       )}
@@ -650,8 +662,8 @@ export default function App() {
                 </header>
 
                 {showSettings && adminRole === 'master' && (
-                  <div className="animate-in zoom-in duration-300">
-                    <div className="bg-yellow-500/5 border border-yellow-500/20 p-10 rounded-[2.5rem] space-y-6 shadow-xl max-w-xl">
+                  <div className="grid md:grid-cols-2 gap-8 animate-in zoom-in duration-300">
+                    <div className="bg-yellow-500/5 border border-yellow-500/20 p-10 rounded-[2.5rem] space-y-6 shadow-xl">
                       <h4 className="font-black uppercase text-yellow-500 italic flex items-center gap-2"><Palette size={18}/> Identidade</h4>
                       <div className="flex items-center gap-6">
                          <img src={String(siteSettings.logoUrl)} className="w-20 h-20 rounded-2xl object-cover border-2 border-yellow-500/50" alt="Logo Settings" />
@@ -661,6 +673,15 @@ export default function App() {
                          </div>
                          <input type="file" ref={logoInputRef} className="hidden" accept="image/*" onChange={handleLogoUpdate} />
                       </div>
+                    </div>
+                    <div className="bg-blue-500/5 border border-blue-500/20 p-10 rounded-[2.5rem] space-y-4 shadow-xl">
+                      <h4 className="font-black uppercase text-blue-400 italic flex items-center gap-2"><Settings size={18}/> GitHub API</h4>
+                      <input type="password" placeholder="Token" className="w-full bg-black border border-white/5 p-3 rounded-xl text-xs font-bold" value={String(ghConfig.token || '')} onChange={e => setGhConfig({...ghConfig, token: e.target.value})} />
+                      <div className="grid grid-cols-2 gap-4">
+                        <input type="text" placeholder="Dono" className="bg-black border border-white/5 p-3 rounded-xl text-xs" value={String(ghConfig.owner || '')} onChange={e => setGhConfig({...ghConfig, owner: e.target.value})} />
+                        <input type="text" placeholder="Repositorio" className="bg-black border border-white/5 p-3 rounded-xl text-xs" value={String(ghConfig.repo || '')} onChange={e => setGhConfig({...ghConfig, repo: e.target.value})} />
+                      </div>
+                      <button onClick={saveGhConfig} className="w-full bg-blue-600 text-white font-black p-3 rounded-xl uppercase text-xs">Salvar Definições</button>
                     </div>
                   </div>
                 )}
