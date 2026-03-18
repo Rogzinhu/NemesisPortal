@@ -32,7 +32,7 @@ const db = getFirestore(app);
 const appId = 'nemesis-2-app';
 
 // --- GEMINI API CONFIG ---
-const GEMINI_API_KEY = ""; 
+const GEMINI_API_KEY = "AIzaSyCx3iWFtwKdlMF3PO_7NHhYioSxq-MmKxU"; 
 const GEMINI_MODEL = "gemini-2.5-flash-preview-09-2025";
 
 // --- SUB-COMPONENTES AUXILIARES ---
