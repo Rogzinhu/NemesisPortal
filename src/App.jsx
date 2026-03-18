@@ -11,7 +11,7 @@ import {
 import { 
   Book, LayoutDashboard, LogOut, Plus, Trash2, 
   Users, Home, MessageSquare, AlertTriangle,
-  Camera, Settings, Loader2, Palette, Lock, Link as LinkIcon, ImageIcon, User, Globe, ChevronRight, ArrowLeft, Edit3, Sparkles, Send, BrainCircuit
+  Camera, Settings, Loader2, Palette, Lock, Link as LinkIcon, ImageIcon, User, Globe, ChevronRight, ArrowLeft, Edit3, Sparkles, Send, BrainCircuit, Activity
 } from 'lucide-react';
 
 // --- CONFIGURAÇÃO FIREBASE ---
@@ -165,7 +165,7 @@ const OracleModal = ({ setShowOracle, oracleResponse, oracleQuery, setOracleQuer
   </div>
 );
 
-const ProfileView = ({ player, loggedPlayer, communityPosts, siteSettings, setSelectedProfile, setActiveTab, isEditingProfile, setIsEditingProfile, editBio, setEditBio, handleGenerateBio, aiLoading, updateBio, handleUpload, profilePicInputRef }) => {
+const ProfileView = ({ player, loggedPlayer, communityPosts, siteSettings, setSelectedProfile, setActiveTab, isEditingProfile, setIsEditingProfile, editBio, setEditBio, handleGenerateBio, aiLoading, updateBio, handleUpload, profilePicInputRef, bannerPicInputRef }) => {
   const playerPosts = communityPosts.filter(p => p.author === player.name);
   const isMyProfile = loggedPlayer?.id === player.id;
   const tColor = player.team === 'andromeda' ? '#bc13fe' : '#22c55e';
@@ -176,23 +176,45 @@ const ProfileView = ({ player, loggedPlayer, communityPosts, siteSettings, setSe
          <ArrowLeft size={16}/> Regressar à Galeria
       </button>
 
-      <div className="glass-panel rounded-[3rem] border border-white/5 p-8 md:p-12 shadow-[0_30px_60px_rgba(0,0,0,0.6)] relative overflow-hidden group hover:border-white/10 transition-all duration-500">
-          <div className="absolute top-0 left-0 w-full h-1.5 transition-all duration-700 opacity-80 group-hover:opacity-100 group-hover:h-2" style={{ backgroundColor: tColor, boxShadow: `0 0 20px ${tColor}` }}></div>
-          <div className="absolute top-0 right-0 w-96 h-96 bg-white/[0.01] rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 pointer-events-none group-hover:bg-white/[0.02] transition-colors duration-1000"></div>
+      <div className="glass-panel rounded-[3rem] border border-white/5 shadow-[0_30px_60px_rgba(0,0,0,0.6)] relative overflow-hidden group hover:border-white/10 transition-all duration-500 flex flex-col">
+          <div className="absolute top-0 left-0 w-full h-1.5 transition-all duration-700 opacity-80 group-hover:opacity-100 group-hover:h-2 z-20" style={{ backgroundColor: tColor, boxShadow: `0 0 20px ${tColor}` }}></div>
           
-          <div className="flex flex-col md:flex-row items-center gap-8 md:gap-14 relative z-10">
-             <div className="relative group/avatar">
+          {/* BANNER BACKGROUND */}
+          <div className="relative w-full h-48 md:h-64 bg-black overflow-hidden flex-shrink-0">
+             {player.bannerUrl ? (
+                <img src={player.bannerUrl} className="w-full h-full object-cover opacity-70 group-hover:opacity-90 transition-opacity duration-500" alt="Banner" />
+             ) : (
+                <div className="w-full h-full bg-gradient-to-br from-gray-900 via-black to-gray-900 relative">
+                   <div className="absolute inset-0 opacity-20" style={{backgroundImage: 'radial-gradient(circle at 50% 50%, rgba(255,255,255,0.1) 1px, transparent 1px)', backgroundSize: '20px 20px'}}></div>
+                </div>
+             )}
+             <div className="absolute inset-0 bg-gradient-to-t from-[rgba(10,10,10,0.6)] via-transparent to-transparent"></div>
+
+             {isMyProfile && (
+               <>
+                 <button onClick={() => bannerPicInputRef.current?.click()} className="absolute top-6 right-6 bg-black/50 backdrop-blur-md text-white p-3 rounded-full shadow-lg hover:bg-white/10 hover:scale-110 active:scale-95 transition-all z-20 border border-white/10 group/bannerbtn">
+                   <Camera size={20} className="group-hover/bannerbtn:text-yellow-400 transition-colors"/>
+                 </button>
+                 <input type="file" ref={bannerPicInputRef} className="hidden" onChange={e => handleUpload(e, 'banner')} />
+               </>
+             )}
+          </div>
+
+          <div className="absolute top-0 right-0 w-96 h-96 bg-white/[0.01] rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 pointer-events-none group-hover:bg-white/[0.02] transition-colors duration-1000 z-10"></div>
+          
+          <div className="px-8 md:px-12 pb-8 md:pb-12 relative z-10 flex flex-col md:flex-row items-center md:items-start gap-8 md:gap-14">
+             <div className="relative group/avatar -mt-20 md:-mt-24">
                 <div className="absolute inset-0 rounded-full animate-spin-slow opacity-0 group-hover/avatar:opacity-100 transition-opacity duration-500" style={{border: `2px dashed ${tColor}`}}></div>
-                <img src={player.photoUrl || siteSettings.logoUrl} className="w-36 h-36 md:w-48 md:h-48 rounded-full object-cover border-4 border-[#0a0a0a] ring-2 ring-white/10 shadow-2xl transition-all duration-700 group-hover/avatar:scale-105" style={{boxShadow: `0 0 40px ${tColor}33`}}/>
+                <img src={player.photoUrl || siteSettings.logoUrl} className="w-36 h-36 md:w-48 md:h-48 rounded-full object-cover border-8 border-[rgba(10,10,10,0.8)] ring-1 ring-white/10 shadow-2xl transition-all duration-700 group-hover/avatar:scale-105 relative z-10 bg-[#0a0a0a]" style={{boxShadow: `0 0 40px ${tColor}33`}}/>
                 {isMyProfile && (
-                  <button onClick={() => profilePicInputRef.current?.click()} className="absolute bottom-2 right-2 bg-yellow-500 text-black p-3 rounded-full shadow-[0_0_20px_rgba(250,204,21,0.5)] hover:bg-yellow-400 hover:scale-110 active:scale-95 transition-all z-20">
+                  <button onClick={() => profilePicInputRef.current?.click()} className="absolute bottom-4 right-4 bg-yellow-500 text-black p-3 rounded-full shadow-[0_0_20px_rgba(250,204,21,0.5)] hover:bg-yellow-400 hover:scale-110 active:scale-95 transition-all z-20 border-2 border-[rgba(10,10,10,0.8)]">
                     <Camera size={20}/>
                   </button>
                 )}
                 <input type="file" ref={profilePicInputRef} className="hidden" onChange={e => handleUpload(e, 'profile')} />
              </div>
              
-             <div className="flex-1 text-center md:text-left space-y-5">
+             <div className="flex-1 text-center md:text-left space-y-5 pt-2 md:pt-4">
                 <div className="flex flex-col md:flex-row md:items-center gap-5">
                    <h2 className="text-4xl md:text-5xl font-black italic uppercase tracking-tighter transition-all hover:scale-105 cursor-default drop-shadow-md">{player.name}</h2>
                    <span className="px-5 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-black/50 border backdrop-blur-md shadow-inner transition-all hover:scale-105 cursor-default" style={{ color: tColor, borderColor: `${tColor}40` }}>
@@ -293,6 +315,9 @@ export default function App() {
   const [oracleQuery, setOracleQuery] = useState('');
   const [oracleResponse, setOracleResponse] = useState('');
 
+  // Estado do Servidor de Minecraft
+  const [serverStatus, setServerStatus] = useState({ online: false, players: 0, maxPlayers: 0, loading: true });
+
   // Estados de Edição de Perfil
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [editBio, setEditBio] = useState('');
@@ -324,12 +349,34 @@ export default function App() {
   const commFileInputRef = useRef(null);
   const logoInputRef = useRef(null);
   const profilePicInputRef = useRef(null);
+  const bannerPicInputRef = useRef(null);
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 1024);
     checkMobile();
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  useEffect(() => {
+    const fetchServerStatus = async () => {
+      try {
+        const response = await fetch('https://api.mcsrvstat.us/2/plus-06.bedhosting.com.br:14398');
+        const data = await response.json();
+        setServerStatus({
+          online: data.online,
+          players: data.players?.online || 0,
+          maxPlayers: data.players?.max || 0,
+          loading: false
+        });
+      } catch (error) {
+        setServerStatus(prev => ({ ...prev, loading: false }));
+      }
+    };
+    
+    fetchServerStatus();
+    const statusInterval = setInterval(fetchServerStatus, 60000); // Atualiza a cada 1 minuto
+    return () => clearInterval(statusInterval);
   }, []);
 
   useEffect(() => {
@@ -455,11 +502,12 @@ export default function App() {
     setIsUploading(true);
     setUploadProgress('Sincronizando...');
     try {
-      const url = await uploadToGitHub(file, target === 'official' ? 'official' : target === 'profile' ? 'profiles' : 'community');
+      const url = await uploadToGitHub(file, target === 'official' ? 'official' : (target === 'profile' || target === 'banner') ? 'profiles' : 'community');
       const type = file.type.startsWith('video/') ? 'video' : 'image';
       if (target === 'official') setNewPost(p => ({ ...p, mediaUrl: url, mediaType: type }));
       else if (target === 'community') setNewCommPost(p => ({ ...p, mediaUrl: url, mediaType: type }));
       else if (target === 'profile' && loggedPlayer) await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'players', loggedPlayer.id), { photoUrl: url });
+      else if (target === 'banner' && loggedPlayer) await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'players', loggedPlayer.id), { bannerUrl: url });
       setUploadProgress('Concluído!');
     } catch (err) { setGlobalError("Erro no upload."); }
     finally { setIsUploading(false); setTimeout(() => setUploadProgress(''), 3000); }
@@ -576,6 +624,21 @@ export default function App() {
                 </div>
                 <span className="font-black text-2xl italic uppercase tracking-tighter text-white group-hover:text-yellow-400 group-hover:drop-shadow-[0_0_10px_rgba(250,204,21,0.5)] transition-all duration-300">{siteSettings.siteName}</span>
               </div>
+              
+              {/* STATUS WIDGET NAVBAR */}
+              <div className="hidden lg:flex items-center gap-3 bg-black/40 border border-white/10 px-4 py-2 rounded-xl backdrop-blur-md shadow-inner">
+                <div className="relative flex h-3 w-3">
+                  {serverStatus.online && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>}
+                  <span className={`relative inline-flex rounded-full h-3 w-3 ${serverStatus.online ? 'bg-green-500' : serverStatus.loading ? 'bg-yellow-500' : 'bg-red-500'}`}></span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-[7px] text-gray-400 font-black uppercase tracking-[0.2em] leading-none mb-1">Status do Núcleo</span>
+                  <span className={`text-[10px] font-black uppercase tracking-widest leading-none ${serverStatus.online ? 'text-green-400' : serverStatus.loading ? 'text-yellow-400' : 'text-red-400'}`}>
+                    {serverStatus.loading ? 'Sincronizando...' : serverStatus.online ? `${serverStatus.players} Lordes Conectados` : 'Núcleo Offline'}
+                  </span>
+                </div>
+              </div>
+
               <div className="flex items-center gap-2">
                  <DesktopNavBtn active={activeTab === 'home' && !selectedProfile} onClick={() => { setActiveTab('home'); setSelectedProfile(null); }} Icon={Home} label="Mural" />
                  <DesktopNavBtn active={activeTab === 'community' && !selectedProfile} onClick={() => { setActiveTab('community'); setSelectedProfile(null); }} Icon={ImageIcon} label="Galeria" />
@@ -612,6 +675,7 @@ export default function App() {
               updateBio={updateBio}
               handleUpload={handleUpload}
               profilePicInputRef={profilePicInputRef}
+              bannerPicInputRef={bannerPicInputRef}
             />
           ) : (
             <>
@@ -629,6 +693,37 @@ export default function App() {
                     </div>
                   </div>
                   
+                  {/* SERVER STATUS BANNER */}
+                  <div className="glass-panel border border-white/5 rounded-[2.5rem] p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-6 shadow-[0_20px_40px_rgba(0,0,0,0.5)] relative overflow-hidden group">
+                     <div className="absolute inset-0 bg-gradient-to-r from-green-900/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none"></div>
+                     <div className="flex items-center gap-5 relative z-10 w-full md:w-auto">
+                        <div className="relative">
+                          <div className={`absolute inset-0 rounded-full blur-md opacity-50 transition-colors duration-500 ${serverStatus.online ? 'bg-green-500' : serverStatus.loading ? 'bg-yellow-500' : 'bg-red-500'}`}></div>
+                          <div className={`w-14 h-14 rounded-full border-2 flex items-center justify-center relative z-10 transition-colors duration-500 bg-black/50 backdrop-blur-sm ${serverStatus.online ? 'text-green-400 border-green-500/50 shadow-[0_0_15px_rgba(34,197,94,0.3)]' : serverStatus.loading ? 'text-yellow-400 border-yellow-500/50' : 'text-red-400 border-red-500/50'}`}>
+                            <Activity size={24} className={serverStatus.loading ? 'animate-pulse' : serverStatus.online ? 'animate-pulse-slow' : ''} />
+                          </div>
+                        </div>
+                        <div>
+                          <h3 className="font-black text-xl md:text-2xl uppercase italic tracking-tighter text-white drop-shadow-sm leading-none mb-1">Arca Nêmesis</h3>
+                          <p className="text-[10px] text-gray-400 font-bold tracking-[0.3em] uppercase">Integridade do Núcleo</p>
+                        </div>
+                     </div>
+                     
+                     <div className="flex items-center justify-between md:justify-end gap-6 bg-black/60 px-6 py-4 rounded-2xl border border-white/5 relative z-10 w-full md:w-auto shadow-inner">
+                        <div className="flex flex-col text-left md:text-right">
+                           <span className={`font-black text-sm uppercase tracking-[0.2em] transition-colors duration-500 ${serverStatus.online ? 'text-green-400 drop-shadow-[0_0_8px_rgba(34,197,94,0.5)]' : serverStatus.loading ? 'text-yellow-400' : 'text-red-400'}`}>
+                              {serverStatus.loading ? 'Analisando Fluxo...' : serverStatus.online ? 'Conexão Estável' : 'Sinal Perdido'}
+                           </span>
+                           {serverStatus.online && <span className="text-[10px] text-gray-500 font-black tracking-widest uppercase mt-1">{serverStatus.players} de {serverStatus.maxPlayers} Lordes Ativos</span>}
+                           {!serverStatus.online && !serverStatus.loading && <span className="text-[10px] text-gray-500 font-black tracking-widest uppercase mt-1">Servidor Inativo</span>}
+                        </div>
+                        <div className="relative flex h-4 w-4">
+                          {serverStatus.online && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>}
+                          <span className={`relative inline-flex rounded-full h-4 w-4 transition-colors duration-500 ${serverStatus.online ? 'bg-green-500 shadow-[0_0_10px_#22c55e]' : serverStatus.loading ? 'bg-yellow-500' : 'bg-red-500'}`}></span>
+                        </div>
+                     </div>
+                  </div>
+
                   <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
                      <div className="lg:col-span-8 space-y-10">
                        <div className="flex items-center gap-4 mb-2">
