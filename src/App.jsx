@@ -8,7 +8,7 @@ import {
   getAuth, signInAnonymously, onAuthStateChanged, 
   signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut
 } from 'firebase/auth';
-import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { getStorage, ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { 
   Book, LayoutDashboard, LogOut, Plus, Trash2, 
   Users, Home, MessageSquare, AlertTriangle,
@@ -197,63 +197,112 @@ export default function App() {
 
   // --- UPLOADS PARA O FIREBASE STORAGE ---
   
-  const handleFileChange = async (e) => {
+  const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
     setIsUploading(true);
-    setUploadProgress('A carregar para a Arca...');
-    try {
-      const storageRef = ref(storage, `official/${Date.now()}_${file.name.replace(/\s+/g, '_')}`);
-      await uploadBytes(storageRef, file);
-      const url = await getDownloadURL(storageRef);
-      const type = file.type.startsWith('video/') ? 'video' : 'image';
-      setNewPost(prev => ({ ...prev, mediaUrl: url, mediaType: type }));
-      setUploadProgress('Mídia anexada com sucesso!');
-    } catch (err) { alert("Falha na conexão com Storage."); } 
-    finally {
-      setIsUploading(false);
-      setTimeout(() => setUploadProgress(''), 3000);
-    }
+    setUploadProgress('A carregar... 0%');
+    setGlobalError('');
+
+    const storageRef = ref(storage, `official/${Date.now()}_${file.name.replace(/\s+/g, '_')}`);
+    const uploadTask = uploadBytesResumable(storageRef, file);
+
+    uploadTask.on('state_changed', 
+      (snapshot) => {
+        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+        setUploadProgress(`A carregar... ${Math.round(progress)}%`);
+      }, 
+      (error) => {
+        setGlobalError("Erro de permissão no Storage. Verifique as Regras no painel do Firebase.");
+        setIsUploading(false);
+        setUploadProgress('Erro no envio');
+      }, 
+      async () => {
+        try {
+          const url = await getDownloadURL(uploadTask.snapshot.ref);
+          const type = file.type.startsWith('video/') ? 'video' : 'image';
+          setNewPost(prev => ({ ...prev, mediaUrl: url, mediaType: type }));
+          setUploadProgress('Mídia anexada!');
+        } catch (err) {
+          setGlobalError("Erro ao processar imagem.");
+        } finally {
+          setIsUploading(false);
+          setTimeout(() => setUploadProgress(''), 3000);
+        }
+      }
+    );
   };
 
-  const handleCommFileChange = async (e) => {
+  const handleCommFileChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
     setIsUploading(true);
-    setUploadProgress('A carregar para a Arca...');
-    try {
-      const storageRef = ref(storage, `community/${Date.now()}_${file.name.replace(/\s+/g, '_')}`);
-      await uploadBytes(storageRef, file);
-      const url = await getDownloadURL(storageRef);
-      const type = file.type.startsWith('video/') ? 'video' : 'image';
-      setNewCommPost(prev => ({ ...prev, mediaUrl: url, mediaType: type }));
-      setUploadProgress('Mídia carregada com sucesso!');
-    } catch (err) {
-      console.error(err);
-      alert("Erro ao enviar! Certifique-se que ativou o Storage no painel do Firebase.");
-    } finally {
-      setIsUploading(false);
-      setTimeout(() => setUploadProgress(''), 3000);
-    }
+    setUploadProgress('A carregar... 0%');
+    setGlobalError('');
+
+    const storageRef = ref(storage, `community/${Date.now()}_${file.name.replace(/\s+/g, '_')}`);
+    const uploadTask = uploadBytesResumable(storageRef, file);
+
+    uploadTask.on('state_changed', 
+      (snapshot) => {
+        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+        setUploadProgress(`A carregar... ${Math.round(progress)}%`);
+      }, 
+      (error) => {
+        setGlobalError("Erro ao enviar foto. Vá ao Firebase > Storage > Rules e certifique-se que as regras permitem leitura e escrita.");
+        setIsUploading(false);
+        setUploadProgress('Erro');
+      }, 
+      async () => {
+        try {
+          const url = await getDownloadURL(uploadTask.snapshot.ref);
+          const type = file.type.startsWith('video/') ? 'video' : 'image';
+          setNewCommPost(prev => ({ ...prev, mediaUrl: url, mediaType: type }));
+          setUploadProgress('Concluído!');
+        } catch (err) {
+          setGlobalError("Erro ao gerar link da imagem.");
+        } finally {
+          setIsUploading(false);
+          setTimeout(() => setUploadProgress(''), 3000);
+        }
+      }
+    );
   };
 
-  const handleLogoUpdate = async (e) => {
+  const handleLogoUpdate = (e) => {
     const file = e.target.files[0];
     if (!file) return;
     setIsUploading(true);
-    setUploadProgress('A enviar nova logo...');
-    try {
-      const storageRef = ref(storage, `system/logo_${Date.now()}_${file.name.replace(/\s+/g, '_')}`);
-      await uploadBytes(storageRef, file);
-      const url = await getDownloadURL(storageRef);
-      const siteConfigDoc = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'site');
-      await setDoc(siteConfigDoc, { ...siteSettings, logoUrl: url }, { merge: true });
-      setUploadProgress('Logo atualizada!');
-    } catch (err) { alert("Erro ao atualizar logo."); }
-    finally { 
-      setIsUploading(false); 
-      setTimeout(() => setUploadProgress(''), 3000);
-    }
+    setUploadProgress('A enviar logo... 0%');
+    setGlobalError('');
+
+    const storageRef = ref(storage, `system/logo_${Date.now()}_${file.name.replace(/\s+/g, '_')}`);
+    const uploadTask = uploadBytesResumable(storageRef, file);
+
+    uploadTask.on('state_changed', 
+      (snapshot) => {
+        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+        setUploadProgress(`A carregar... ${Math.round(progress)}%`);
+      }, 
+      (error) => {
+        setGlobalError("Erro ao atualizar logo. Verifique as permissões do Firebase Storage.");
+        setIsUploading(false);
+        setUploadProgress('Erro');
+      }, 
+      async () => {
+        try {
+          const url = await getDownloadURL(uploadTask.snapshot.ref);
+          const siteConfigDoc = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'site');
+          await setDoc(siteConfigDoc, { ...siteSettings, logoUrl: url }, { merge: true });
+          setUploadProgress('Logo atualizada!');
+        } catch (err) {
+          setGlobalError("Erro ao salvar logo.");
+        } finally {
+          setIsUploading(false);
+          setTimeout(() => setUploadProgress(''), 3000);
+        }
+      }
+    );
   };
 
   // --- FUNÇÕES DE BANCO DE DADOS ---
