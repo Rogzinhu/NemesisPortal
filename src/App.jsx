@@ -11,7 +11,8 @@ import {
 import { 
   Book, LayoutDashboard, LogOut, Plus, Trash2, 
   Users, Home, MessageSquare, AlertTriangle,
-  Camera, Settings, Loader2, Palette, Lock, Link as LinkIcon, ImageIcon, User, Globe, ChevronRight, ArrowLeft, Edit3, Sparkles, Send, BrainCircuit, Activity
+  Camera, Settings, Loader2, Palette, Lock, Link as LinkIcon, ImageIcon, User, Globe, ChevronRight, ArrowLeft, Edit3, Sparkles, Send, BrainCircuit, Activity,
+  Twitter, Youtube, Twitch, MessageCircle, UserCircle
 } from 'lucide-react';
 
 // --- CONFIGURAÇÃO FIREBASE ---
@@ -35,6 +36,12 @@ const GEMINI_API_KEY = "";
 const GEMINI_MODEL = "gemini-2.5-flash-preview-09-2025";
 
 // --- SUB-COMPONENTES AUXILIARES ---
+
+const TikTokIcon = ({ size = 24, className = "" }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <path d="M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5" />
+  </svg>
+);
 
 const DesktopNavBtn = ({ active, onClick, Icon, label }) => (
   <button onClick={onClick} className={`relative flex items-center gap-2 px-5 py-2.5 rounded-xl font-black uppercase text-[10px] tracking-widest transition-all duration-300 overflow-hidden group ${active ? 'scale-105' : 'text-gray-500 hover:text-white hover:scale-105 active:scale-95'}`}>
@@ -165,10 +172,20 @@ const OracleModal = ({ setShowOracle, oracleResponse, oracleQuery, setOracleQuer
   </div>
 );
 
-const ProfileView = ({ player, loggedPlayer, communityPosts, siteSettings, setSelectedProfile, setActiveTab, isEditingProfile, setIsEditingProfile, editBio, setEditBio, handleGenerateBio, aiLoading, updateBio, handleUpload, profilePicInputRef, bannerPicInputRef }) => {
+const ProfileView = ({ player, loggedPlayer, communityPosts, siteSettings, setSelectedProfile, setActiveTab, isEditingProfile, setIsEditingProfile, editProfileData, setEditProfileData, handleGenerateBio, aiLoading, updateProfile, handleUpload, profilePicInputRef, bannerPicInputRef }) => {
   const playerPosts = communityPosts.filter(p => p.author === player.name);
   const isMyProfile = loggedPlayer?.id === player.id;
   const tColor = player.team === 'andromeda' ? '#bc13fe' : '#22c55e';
+
+  const SocialBtn = ({ icon: Icon, href, label, colorClass }) => {
+    if (!href) return null;
+    return (
+      <a href={href.startsWith('http') ? href : `https://${href}`} target="_blank" rel="noopener noreferrer" className={`p-3 rounded-xl bg-white/5 border border-white/10 hover:-translate-y-1 transition-all duration-300 shadow-lg group relative overflow-hidden ${colorClass}`}>
+        <div className="absolute inset-0 bg-current opacity-0 group-hover:opacity-20 transition-opacity"></div>
+        <Icon size={18} className="relative z-10" />
+      </a>
+    );
+  };
 
   return (
     <div className="space-y-10 animate-fade-in pb-20">
@@ -214,24 +231,61 @@ const ProfileView = ({ player, loggedPlayer, communityPosts, siteSettings, setSe
                 <input type="file" ref={profilePicInputRef} className="hidden" onChange={e => handleUpload(e, 'profile')} />
              </div>
              
-             <div className="flex-1 text-center md:text-left space-y-5 pt-2 md:pt-4">
-                <div className="flex flex-col md:flex-row md:items-center gap-5">
-                   <h2 className="text-4xl md:text-5xl font-black italic uppercase tracking-tighter transition-all hover:scale-105 cursor-default drop-shadow-md">{player.name}</h2>
-                   <span className="px-5 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-black/50 border backdrop-blur-md shadow-inner transition-all hover:scale-105 cursor-default" style={{ color: tColor, borderColor: `${tColor}40` }}>
-                     Nação {player.team.toUpperCase()}
-                   </span>
+             <div className="flex-1 text-center md:text-left space-y-5 pt-2 md:pt-4 w-full">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                   <div className="flex flex-col md:flex-row md:items-center gap-5">
+                      <h2 className="text-4xl md:text-5xl font-black italic uppercase tracking-tighter transition-all hover:scale-105 cursor-default drop-shadow-md">{player.name}</h2>
+                      <span className="px-5 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-black/50 border backdrop-blur-md shadow-inner transition-all hover:scale-105 cursor-default inline-block mx-auto md:mx-0" style={{ color: tColor, borderColor: `${tColor}40` }}>
+                        Nação {player.team.toUpperCase()}
+                      </span>
+                   </div>
+                   {!isEditingProfile && (
+                     <div className="flex items-center justify-center md:justify-end gap-3 mt-4 md:mt-0 flex-wrap">
+                        <SocialBtn icon={MessageCircle} href={player.discord} colorClass="text-[#5865F2] hover:border-[#5865F2]" />
+                        <SocialBtn icon={Twitter} href={player.twitter} colorClass="text-[#1DA1F2] hover:border-[#1DA1F2]" />
+                        <SocialBtn icon={Youtube} href={player.youtube} colorClass="text-[#FF0000] hover:border-[#FF0000]" />
+                        <SocialBtn icon={Twitch} href={player.twitch} colorClass="text-[#9146FF] hover:border-[#9146FF]" />
+                        <SocialBtn icon={TikTokIcon} href={player.tiktok} colorClass="text-[#FE2C55] hover:border-[#FE2C55]" />
+                     </div>
+                   )}
                 </div>
+
                 {isEditingProfile ? (
-                   <div className="space-y-4 max-w-2xl bg-black/40 p-6 rounded-2xl border border-white/5">
+                   <div className="space-y-4 w-full bg-black/40 p-6 rounded-2xl border border-white/5">
                       <div className="flex justify-between items-center mb-2">
-                         <span className="text-[10px] text-gray-500 font-black uppercase tracking-widest">Editor de Manifesto</span>
+                         <span className="text-[10px] text-gray-500 font-black uppercase tracking-widest">Editor de Perfil</span>
                          <button onClick={handleGenerateBio} disabled={aiLoading} className="flex items-center gap-2 bg-purple-600/20 text-purple-400 border border-purple-500/30 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase hover:bg-purple-600/40 transition-all active:scale-95 hover:shadow-[0_0_15px_rgba(168,85,247,0.3)]">
                             {aiLoading ? <Loader2 size={12} className="animate-spin"/> : <Sparkles size={12}/>} Sintetizar IA ✨
                          </button>
                       </div>
-                      <textarea className="w-full bg-black/80 border border-white/10 p-5 rounded-xl text-sm h-28 focus:border-yellow-500/50 outline-none transition-all resize-none shadow-inner" value={editBio} onChange={e => setEditBio(e.target.value)} placeholder="Registe o seu propósito na Arca..."></textarea>
-                      <div className="flex gap-3 justify-center md:justify-start">
-                         <button onClick={updateBio} className="bg-green-600 text-white px-8 py-2.5 rounded-xl font-black text-[10px] uppercase hover:bg-green-500 active:scale-95 transition-all shadow-[0_0_15px_rgba(34,197,94,0.3)]">Sincronizar</button>
+                      
+                      <textarea className="w-full bg-black/80 border border-white/10 p-5 rounded-xl text-sm h-28 focus:border-yellow-500/50 outline-none transition-all resize-none shadow-inner" value={editProfileData.bio} onChange={e => setEditProfileData({...editProfileData, bio: e.target.value})} placeholder="Registe o seu propósito na Arca..."></textarea>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                         <div className="flex items-center bg-black/80 border border-white/10 rounded-xl overflow-hidden focus-within:border-[#5865F2]/50 transition-all">
+                            <div className="p-3 bg-white/5 text-[#5865F2]"><MessageCircle size={18}/></div>
+                            <input type="text" placeholder="Link do Discord" className="w-full bg-transparent p-3 text-xs outline-none text-white placeholder-gray-600" value={editProfileData.discord} onChange={e => setEditProfileData({...editProfileData, discord: e.target.value})} />
+                         </div>
+                         <div className="flex items-center bg-black/80 border border-white/10 rounded-xl overflow-hidden focus-within:border-[#1DA1F2]/50 transition-all">
+                            <div className="p-3 bg-white/5 text-[#1DA1F2]"><Twitter size={18}/></div>
+                            <input type="text" placeholder="Link do Twitter / X" className="w-full bg-transparent p-3 text-xs outline-none text-white placeholder-gray-600" value={editProfileData.twitter} onChange={e => setEditProfileData({...editProfileData, twitter: e.target.value})} />
+                         </div>
+                         <div className="flex items-center bg-black/80 border border-white/10 rounded-xl overflow-hidden focus-within:border-[#FF0000]/50 transition-all">
+                            <div className="p-3 bg-white/5 text-[#FF0000]"><Youtube size={18}/></div>
+                            <input type="text" placeholder="Link do Youtube" className="w-full bg-transparent p-3 text-xs outline-none text-white placeholder-gray-600" value={editProfileData.youtube} onChange={e => setEditProfileData({...editProfileData, youtube: e.target.value})} />
+                         </div>
+                         <div className="flex items-center bg-black/80 border border-white/10 rounded-xl overflow-hidden focus-within:border-[#9146FF]/50 transition-all">
+                            <div className="p-3 bg-white/5 text-[#9146FF]"><Twitch size={18}/></div>
+                            <input type="text" placeholder="Link da Twitch" className="w-full bg-transparent p-3 text-xs outline-none text-white placeholder-gray-600" value={editProfileData.twitch} onChange={e => setEditProfileData({...editProfileData, twitch: e.target.value})} />
+                         </div>
+                         <div className="flex items-center bg-black/80 border border-white/10 rounded-xl overflow-hidden focus-within:border-[#FE2C55]/50 transition-all md:col-span-2">
+                            <div className="p-3 bg-white/5 text-[#FE2C55]"><TikTokIcon size={18}/></div>
+                            <input type="text" placeholder="Link do TikTok" className="w-full bg-transparent p-3 text-xs outline-none text-white placeholder-gray-600" value={editProfileData.tiktok} onChange={e => setEditProfileData({...editProfileData, tiktok: e.target.value})} />
+                         </div>
+                      </div>
+
+                      <div className="flex gap-3 justify-center md:justify-start pt-4">
+                         <button onClick={updateProfile} className="bg-green-600 text-white px-8 py-2.5 rounded-xl font-black text-[10px] uppercase hover:bg-green-500 active:scale-95 transition-all shadow-[0_0_15px_rgba(34,197,94,0.3)]">Sincronizar</button>
                          <button onClick={() => setIsEditingProfile(false)} className="bg-white/5 text-gray-300 px-8 py-2.5 rounded-xl font-black text-[10px] uppercase hover:bg-white/10 hover:text-white transition-all">Cancelar</button>
                       </div>
                    </div>
@@ -244,7 +298,17 @@ const ProfileView = ({ player, loggedPlayer, communityPosts, siteSettings, setSe
                    </div>
                 )}
                 {isMyProfile && !isEditingProfile && (
-                  <button onClick={() => { setEditBio(player.bio || ''); setIsEditingProfile(true); }} className="inline-flex items-center gap-2 text-yellow-500/80 font-black text-[10px] uppercase tracking-[0.2em] hover:text-yellow-400 hover:scale-105 transition-all mt-2 p-2 rounded-lg hover:bg-yellow-500/10">
+                  <button onClick={() => { 
+                    setEditProfileData({
+                      bio: player.bio || '',
+                      discord: player.discord || '',
+                      twitter: player.twitter || '',
+                      youtube: player.youtube || '',
+                      twitch: player.twitch || '',
+                      tiktok: player.tiktok || ''
+                    }); 
+                    setIsEditingProfile(true); 
+                  }} className="inline-flex items-center gap-2 text-yellow-500/80 font-black text-[10px] uppercase tracking-[0.2em] hover:text-yellow-400 hover:scale-105 transition-all mt-2 p-2 rounded-lg hover:bg-yellow-500/10">
                      <Edit3 size={14}/> Atualizar Registo
                   </button>
                 )}
@@ -320,7 +384,7 @@ export default function App() {
 
   // Estados de Edição de Perfil
   const [isEditingProfile, setIsEditingProfile] = useState(false);
-  const [editBio, setEditBio] = useState('');
+  const [editProfileData, setEditProfileData] = useState({ bio: '', discord: '', twitter: '', youtube: '', twitch: '', tiktok: '' });
 
   // Estados de Formulário
   const [authEmail, setAuthEmail] = useState('');
@@ -456,7 +520,7 @@ export default function App() {
     if (!loggedPlayer) return;
     const system = `És o Oráculo de Arkanis. Escreve uma biografia para um Lorde da nação ${loggedPlayer.team} no mundo de Nêmesis 2. Estilo gamer épico, curto (máximo 160 char).`;
     const res = await callGemini(`Cria um manifesto curto para o Lorde ${loggedPlayer.name}`, system);
-    if (res) setEditBio(res.trim());
+    if (res) setEditProfileData({...editProfileData, bio: res.trim()});
   };
 
   const handleCinematize = async () => {
@@ -550,12 +614,12 @@ export default function App() {
     setNewCommPost({ author: '', content: '', mediaUrl: '', mediaType: 'image' });
   };
 
-  const updateBio = async () => {
+  const updateProfile = async () => {
     const target = selectedProfile || loggedPlayer;
     if (!target) return;
-    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'players', target.id), { bio: editBio });
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'players', target.id), editProfileData);
     setIsEditingProfile(false);
-    setGlobalError("Manifesto Sincronizado!");
+    setGlobalError("Perfil Sincronizado!");
   };
 
   const handleLogoUpdate = async (e) => {
@@ -644,6 +708,11 @@ export default function App() {
                  <DesktopNavBtn active={activeTab === 'community' && !selectedProfile} onClick={() => { setActiveTab('community'); setSelectedProfile(null); }} Icon={ImageIcon} label="Galeria" />
                  <DesktopNavBtn active={activeTab === 'lore' && !selectedProfile} onClick={() => { setActiveTab('lore'); setSelectedProfile(null); }} Icon={Book} label="Lore" />
                  <DesktopNavBtn active={activeTab === 'teams' && !selectedProfile} onClick={() => { setActiveTab('teams'); setSelectedProfile(null); }} Icon={Users} label="Nações" />
+                 
+                 {loggedPlayer && (
+                   <DesktopNavBtn active={selectedProfile?.id === loggedPlayer.id} onClick={() => { setSelectedProfile(loggedPlayer); setActiveTab('community'); }} Icon={UserCircle} label="Meu Perfil" />
+                 )}
+
                  <div className="w-[1px] h-6 bg-white/10 mx-2"></div>
                  <button onClick={() => setShowOracle(true)} className="relative group p-2.5 bg-purple-500/10 border border-purple-500/20 text-purple-400 rounded-xl hover:bg-purple-600 hover:text-white hover:border-purple-500 transition-all shadow-lg active:scale-95 hover:scale-105 overflow-hidden">
                     <div className="absolute inset-0 bg-gradient-to-tr from-purple-600 to-blue-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
@@ -668,11 +737,11 @@ export default function App() {
               setActiveTab={setActiveTab}
               isEditingProfile={isEditingProfile}
               setIsEditingProfile={setIsEditingProfile}
-              editBio={editBio}
-              setEditBio={setEditBio}
+              editProfileData={editProfileData}
+              setEditProfileData={setEditProfileData}
               handleGenerateBio={handleGenerateBio}
               aiLoading={aiLoading}
-              updateBio={updateBio}
+              updateProfile={updateProfile}
               handleUpload={handleUpload}
               profilePicInputRef={profilePicInputRef}
               bannerPicInputRef={bannerPicInputRef}
@@ -1140,6 +1209,10 @@ export default function App() {
             <MobileNavBtn active={activeTab === 'community'} onClick={() => { setSelectedProfile(null); setActiveTab('community'); }} Icon={ImageIcon} label="Galeria" />
             <MobileNavBtn active={activeTab === 'lore'} onClick={() => { setSelectedProfile(null); setActiveTab('lore'); }} Icon={Book} label="Lore" />
             <MobileNavBtn active={activeTab === 'teams'} onClick={() => { setSelectedProfile(null); setActiveTab('teams'); }} Icon={Users} label="Nações" />
+            
+            {loggedPlayer && (
+               <MobileNavBtn active={selectedProfile?.id === loggedPlayer.id} onClick={() => { setSelectedProfile(loggedPlayer); setActiveTab('community'); }} Icon={UserCircle} label="Perfil" />
+            )}
          </nav>
        )}
 
